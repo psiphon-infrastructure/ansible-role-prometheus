@@ -23,9 +23,10 @@
 
 - name: Copy custom prometheus configuration
   copy: src={{ inventory_hostname }}.prometheus.yml
-        dest=/opt/prometheus-data
-        force=no
+        dest=/opt/prometheus-data/prometheus.yml
+        force=yes
         mode=644
+        backup=yes
   tags:
     - placeConfig
   when: customConfig.stat.exists
