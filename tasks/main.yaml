@@ -1,8 +1,8 @@
 ---
 # file: ansible-role-prometheus/tasks/main.yaml
-- include_role: 
+- import_role: 
     name: ansible-role-common
-- include_role: 
+- import_role: 
     name: geerlingguy.docker
 
 
@@ -12,6 +12,24 @@
     path: /opt/prometheus-data
     state: directory
 
+- name: Check for custom prometheus configuration
+  stat:
+    path=files/{{ inventory_hostname }}.prometheus.yml
+  register: customConfig
+  tags:
+    - placeConfig
+  delegate_to: 127.0.0.1
+  become: no
+
+- name: Copy custom prometheus configuration
+  copy: src={{ inventory_hostname }}.prometheus.yml
+        dest=/opt/prometheus-data
+        force=no
+        mode=644
+  tags:
+    - placeConfig
+  when: customConfig.stat.exists
+
 - name: Copy default prometheus configuration
   copy: src=prometheus.yml
         dest=/opt/prometheus-data
@@ -19,6 +37,7 @@
         mode=644
   tags:
     - placeConfig
+  when: not customConfig.stat.exists
 
 
 - name: Get Prometheus docker image
