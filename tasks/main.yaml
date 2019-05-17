@@ -2,47 +2,50 @@
 # file: ansible-role-prometheus/tasks/main.yaml
 - import_role: 
     name: ansible-role-common
+  become: false
 - import_role: 
     name: geerlingguy.docker
-
-
+  become: yes
 
 - name: Create prometheus data directory
   file:
     path: /opt/prometheus-data
     state: directory
 
-- name: Check for custom prometheus configuration
-  stat:
-    path=files/{{ inventory_hostname }}.prometheus.yml
-  register: customConfig
-  tags:
-    - placeConfig
-  delegate_to: 127.0.0.1
-  become: no
+- name: Create /opt/prometheus-data/
+  file:
+    path: /opt/prometheus-data
+    state: directory
+    mode: 777
 
-- name: Copy custom prometheus configuration
-  copy: src={{ inventory_hostname }}.prometheus.yml
-        dest=/opt/prometheus-data/prometheus.yml
-        force=yes
-        mode=644
-        backup=yes
-  tags:
-    - placeConfig
-  when: customConfig.stat.exists
+- name: Generate prometheus config
+  template:
+    src: files/prometheus.c583.psiroom.net.prometheus.j2
+    dest: /opt/prometheus-data/prometheus.yml
+    mode: 644
+    force: yes
+    backup: yes
 
-- name: Copy default prometheus configuration
-  copy: src=prometheus.yml
-        dest=/opt/prometheus-data
-        force=no
-        mode=644
-  tags:
-    - placeConfig
-  when: not customConfig.stat.exists
+- name: Check if docker container is running
+  shell: docker ps | grep prometheus
+  register: container_running
+  changed_when: false
+  ignore_errors: yes
 
+- name: Check if docker container exist
+  command: docker inspect prometheus
+  register: container_exist
+  changed_when: false
+  ignore_errors: yes
 
 - name: Get Prometheus docker image
   shell: docker pull prom/prometheus
+  when: not container_exist.rc == 0
 
 - name: Run Prometheus docker container
-  shell: docker run --name prometheus -p 9090:9090 -v /opt/prometheus-data:/prometheus-data --restart unless-stopped --detach prom/prometheus --config.file=/prometheus-data/prometheus.yml
+  shell: docker run --name prometheus -p 9090:9090 -v /opt/prometheus-data:/prometheus --restart unless-stopped --detach prom/prometheus --config.file=/prometheus/prometheus.yml
+  when: not container_exist.rc == 0
+
+- name: Start existing Prometheus docker container
+  shell: docker start prometheus
+  when: container_exist.rc == 0 and not container_running.rc == 0
