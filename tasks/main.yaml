@@ -1,43 +1,42 @@
 ---
 # file: ansible-role-prometheus/tasks/main.yaml
-- import_role: 
-    name: ansible-role-common
-  become: false
-- import_role: 
-    name: geerlingguy.docker
-  become: yes
 
-- name: Create prometheus data directory
-  file:
-    path: /opt/prometheus-data
-    state: directory
+- import_role:
+    name: ansible-role-reverse-proxy
+  vars:
+    nginx_proxy_pass: http://{{ prometheus_container_name }}:9090
+    nginx_data_dir: /opt/nginx-prometheus-proxy
+    nginx_container_port: 8443:443
+    nginx_container_name: nginx-prometheus-proxy
+    nginx_container_network: "{{ prometheus_container_network }}"
+    allowedHosts: ['all']
 
-- name: Create /opt/prometheus-data/
+- name: Create {{ prometheus_data_dir }}
   file:
-    path: /opt/prometheus-data
+    path: "{{ prometheus_data_dir }}"
     state: directory
-    mode: 777
+    mode: 0777
 
 - name: Generate prometheus config
   template:
     src: prometheus.j2
-    dest: /opt/prometheus-data/prometheus.yml
-    mode: 644
+    dest: "{{ prometheus_data_dir }}/prometheus.yml"
+    mode: 0644
     force: yes
     backup: yes
+  register: prometheus_config
 
 - name: Create docker network
-  command: docker network create prom-net
-  ignore_errors: yes
+  shell: "docker network create {{ prometheus_container_network }} || true"
 
-- name: Check if docker container is running
-  shell: docker ps | grep prometheus
+- name: Check if prometheus docker container is running
+  shell: docker ps | grep {{ prometheus_container_name }}
   register: container_running
   changed_when: false
   ignore_errors: yes
 
-- name: Check if docker container exist
-  command: docker inspect prometheus
+- name: Check if prometheus docker container exist
+  command: docker inspect {{ prometheus_container_name }}
   register: container_exist
   changed_when: false
   ignore_errors: yes
@@ -47,52 +46,13 @@
   when: not container_exist.rc == 0
 
 - name: Run Prometheus docker container
-  shell: docker run --name prometheus --net prom-net -v /opt/prometheus-data:/prometheus --restart unless-stopped --detach prom/prometheus --config.file=/prometheus/prometheus.yml --web.external-url=http://{{ inventory_hostname }} --web.route-prefix="/"
+  shell: docker run --name {{ prometheus_container_name }} --net {{ prometheus_container_network }} -v {{ prometheus_data_dir }}:/prometheus --restart unless-stopped --detach prom/prometheus --config.file=/prometheus/prometheus.yml --web.external-url=http://{{ inventory_hostname }} --web.route-prefix="/"
   when: not container_exist.rc == 0
 
 - name: Start existing Prometheus docker container
-  shell: docker start prometheus
+  shell: docker start {{ prometheus_container_name }}
   when: container_exist.rc == 0 and not container_running.rc == 0
   
-
-# nginx docker
-- name: Copy NGINX config
-  template:
-    src: nginx.conf.j2
-    dest: /opt/nginx-data/nginx.conf
-  tags: nginx
-
-- name: Generate server certificates
-  shell: openssl req -x509 -newkey rsa:4096 -nodes -keyout /opt/nginx-data/server.key -out /opt/nginx-data/server.crt -days 365 -subj "/c=CA/ST=ON/O=name"
-  args:
-    creates: /opt/nginx-data/server.key
-  tags: openssl
-
-- name: Check if NGNIX docker container is running
-  shell: docker ps | grep nginx
-  register: nginx_container_running
-  changed_when: false
-  ignore_errors: yes
-  tags: nginx
-
-- name: Check if NGINX docker container exist
-  command: docker inspect nginx
-  register: nginx_container_exist
-  changed_when: false
-  ignore_errors: yes
-  tags: nginx
-
-- name: Get NGINX docker image
-  shell: docker pull nginx
-  tags: nginx
-  when: not nginx_container_exist.rc == 0
-
-- name: Run NGINX docker
-  shell: docker run --name nginx --net prom-net -v /opt/nginx-data/nginx.conf:/etc/nginx/nginx.conf:ro -v /opt/nginx-data/:/etc/nginx/ -p 8080:80 -p 8443:443 --restart unless-stopped --detach nginx 
-  tags: nginx
-  when: not nginx_container_exist.rc == 0
-
-- name: Start existing NGINX docker container
-  shell: docker start nginx
-  when: nginx_container_exist.rc == 0 and not nginx_container_running.rc == 0
-  tags: nginx
+- name: Restart Prometheus container if config changed
+  shell: docker restart {{ prometheus_container_name }}
+  when: prometheus_config.changed

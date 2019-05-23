@@ -1,0 +1,7 @@
+---
+# Directory for config, cert, and key files
+prometheus_data_dir: "/opt/prometheus-data"
+
+# Prometheus Docker container information
+prometheus_container_name: "doprometheus"
+prometheus_container_network: "prom-net"
