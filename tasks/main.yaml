@@ -10,6 +10,7 @@
     nginx_container_name: nginx-prometheus-proxy
     nginx_container_network: "{{ prometheus_container_network }}"
     allowedHosts: ['all']
+  become: true
 
 - name: Create {{ prometheus_data_dir }}
   file:
@@ -26,6 +27,21 @@
     backup: yes
   register: prometheus_config
 
+- name: Create {{ prometheus_data_dir }}/rules
+  file:
+    path: "{{ prometheus_data_dir }}/rules"
+    state: directory
+    mode: 0777
+
+- name: Copy default alerts
+  copy:
+    src: default.rules
+    dest: "{{ prometheus_data_dir }}/rules/default.rules"
+    mode: 0644
+    force: yes
+    backup: yes
+  register: prometheus_rules
+ 
 - name: Create docker network
   shell: "docker network create {{ prometheus_container_network }} || true"
 
@@ -55,4 +71,4 @@
   
 - name: Restart Prometheus container if config changed
   shell: docker restart {{ prometheus_container_name }}
-  when: prometheus_config.changed
+  when: prometheus_config.changed or prometheus_rules.changed
