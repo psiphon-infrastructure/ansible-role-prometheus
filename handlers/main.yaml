@@ -1,0 +1,5 @@
+---
+- name: prometheus_container_restart
+  shell: docker restart $(docker ps -a -q --filter "label={{ prometheus_container_label }}")
+  become: true
+  listen: "global_services_restart"

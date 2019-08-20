@@ -11,23 +11,20 @@ alerting:
       - {{ host }}:9093
       {% endfor %}
 
-# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
 rule_files:
   - "rules/*.rules"
-  # - "first_rules.yml"
-  # - "second_rules.yml"
 
 # A scrape configuration containing exactly one endpoint to scrape:
 # Here it's Prometheus itself.
 scrape_configs:
   # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
-  - job_name: 'prometheus'
+  - job_name: 'infrastructure'
 
     # metrics_path defaults to '/metrics'
     # scheme defaults to 'http'.
-
+    metrics_path: '/node_exporter/metrics'
     static_configs:
-    - targets: ['localhost:9090' {% for host in groups['all'] %} ,'{{ host }}:443' {% endfor %}]
+    - targets: [{% for host in groups['all'] %} '{{ host }}:443', {% endfor %}]
     scheme: https
     tls_config:
       #ca_file: /prometheus/ca.crt
@@ -35,4 +32,9 @@ scrape_configs:
       #key_file: /prometheus/prom_server_nopass.key
       #server_name: server 
       insecure_skip_verify: true
+
+  - job_name: 'prometheus'
+    metrics_path: '/prometheus/metrics'
+    static_configs:
+      - targets: ['localhost:9090']
 
