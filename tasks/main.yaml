@@ -13,16 +13,27 @@
         apply:
           become: true
 
+- name: Create Prometheus data directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: 0777
+  with_items:
+    - "{{ prometheus_data_dir }}"
+    - "{{ prometheus_data_dir }}/rules"
+    - "{{ prometheus_data_dir }}/certs"
+  become: true
+
 - block:
   - name: Check if reverse proxy continer is running
-    shell: docker ps -q --filter "label={{ promehteus_reverse_proxy_container_label }}"
+    shell: docker ps -q --filter "label={{ prometheus_reverse_proxy_container_label }}"
     register: reverse_proxy
     changed_when: false
     become: true
 
   - name: Apply reverse-proxy role
     include_role: 
-      name: ansible_role_reverse_proxy
+      name: ansible-role-reverse-proxy
     when: reverse_proxy.stdout == ""
 
   - name: Configure reverse proxy
@@ -51,15 +62,17 @@
     become: true
     notify: reverse_proxy_nginx_restart
 
-- name: Create Prometheus data directories
-  file:
-    path: "{{ item }}"
-    state: directory
-    mode: 0777
-  with_items:
-    - "{{ prometheus_data_dir }}"
-    - "{{ prometheus_data_dir }}/rules"
-  become: true
+  - name: Copy root ca
+    block:
+      - copy: 
+          src: "/usr/local/share/ca-certificates/custom_root.crt"
+          dest: "{{ prometheus_data_dir }}/certs/ca.crt"
+          remote_src: true
+    rescue:
+      - copy:
+         src: "/usr/local/share/ca-certificates/ipa-ca.crt"
+         dest: "{{ prometheus_data_dir }}/certs/ca.crt"
+         remote_src: true
 
 - name: Delete old container
   shell: docker rm -f $(docker ps -a -q --filter "label={{ prometheus_container_label }}")

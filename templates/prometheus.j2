@@ -5,11 +5,19 @@ global:
 
 alerting:
   alertmanagers:
-  - static_configs:
+  - scheme: https
+    path_prefix: /alertmanager
+    static_configs:
     - targets:
       {% for host in groups['prometheus_alertmanagers'] %}
-      - {{ host }}:9093
+      - {{ host }}:443
       {% endfor %}
+
+    tls_config:
+      ca_file: /prometheus/certs/ca.crt
+      #cert_file: /prometheus/prom_server.crt
+      #key_file: /prometheus/prom_server_nopass.key
+      #insecure_skip_verify: true
 
 rule_files:
   - "rules/*.rules"

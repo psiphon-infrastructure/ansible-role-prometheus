@@ -13,5 +13,5 @@ prometheus_listen_address: "127.0.0.1:9090"
 
 # Other vars
 prometheus_reverse_proxy_container_label: "{{ reverse_proxy_nginx_label | default('reverse_proxy') }}"
-prometheus_reverse_proxy_dir: "{{ revers_proxy_nginx_data_dir | default('/opt/default/revers_proxy') }}"
+prometheus_reverse_proxy_dir: "{{ reverse_proxy_nginx_data_dir | default('/opt/default/reverse_proxy') }}"
 
