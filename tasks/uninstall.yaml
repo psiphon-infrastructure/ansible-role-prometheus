@@ -1,0 +1,40 @@
+---
+# file: ansible-role-prometheus/tasks/uninstall.yaml
+
+- name: Stop existing Prometheus docker container
+  shell: docker stop {{ prometheus_container_name }}
+
+- name: Remove Prometheus docker container
+  shell: docker rm {{ prometheus_container_name }}
+
+- name: Remove Prometheus docker image
+  shell: docker image rm prom/prometheus
+
+- name: Remove docker network
+  shell: "docker network remove {{ prometheus_container_network }} || true"
+
+- name: Delete prometheus config
+  file:
+    path: "{{ prometheus_data_dir }}/prometheus.yml"
+    state: absent
+
+- name: Remove {{ prometheus_data_dir }}
+  file:
+    path: "{{ prometheus_data_dir }}"
+    state: absent
+  tags:
+    - never
+    - remove_data
+
+- import_role:
+    name: ansible-role-reverse-proxy
+    tasks_from: uninstall
+  vars:
+    nginx_proxy_pass: http://{{ prometheus_container_name }}:9090
+    nginx_data_dir: /opt/nginx-prometheus-proxy
+    nginx_container_port: 8443:443
+    nginx_container_name: nginx-prometheus-proxy
+    nginx_container_network: "{{ prometheus_container_network }}"
+    allowedHosts: ['all']
+
+
