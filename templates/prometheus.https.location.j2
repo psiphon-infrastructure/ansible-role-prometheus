@@ -1,0 +1,5 @@
+location /prometheus/ {
+  proxy_pass http://localhost:9090/prometheus/;
+  auth_basic "Restricted access to Prometheus";
+  auth_basic_user_file /etc/nginx/conf.d/{{ role_name }}.htpasswd;
+}

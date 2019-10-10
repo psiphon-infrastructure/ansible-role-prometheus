@@ -1,21 +1,108 @@
 ---
 # file: ansible-role-prometheus/tasks/main.yaml
 
-- import_role:
-    name: ansible-role-reverse-proxy
-  vars:
-    nginx_proxy_pass: http://{{ prometheus_container_name }}:9090
-    nginx_data_dir: /opt/nginx-prometheus-proxy
-    nginx_container_port: 8443:443
-    nginx_container_name: nginx-prometheus-proxy
-    nginx_container_network: "{{ prometheus_container_network }}"
-    allowedHosts: ['all']
+- block:
+    - name: Check Docker installation
+      command: docker --version
+      register: docker
+      changed_when: false
+  rescue:
+    - name: Install docker
+      include_role:
+        name: geerlingguy.docker
+        apply:
+          become: true
 
-- name: Create {{ prometheus_data_dir }}
+- name: Create Prometheus data directories
   file:
-    path: "{{ prometheus_data_dir }}"
+    path: "{{ item }}"
     state: directory
     mode: 0777
+  with_items:
+    - "{{ prometheus_data_dir }}"
+    - "{{ prometheus_data_dir }}/rules"
+    - "{{ prometheus_data_dir }}/certs"
+  become: true
+
+- block:
+  - name: Check if reverse proxy continer is running
+    shell: docker ps -q --filter "label={{ prometheus_reverse_proxy_container_label }}"
+    register: reverse_proxy
+    changed_when: false
+    become: true
+
+  - name: Apply reverse-proxy role
+    include_role: 
+      name: ansible-role-reverse-proxy
+    when: reverse_proxy.stdout == ""
+
+  - name: Configure reverse proxy
+    template:
+      src: prometheus.https.location.j2
+      dest: "{{ prometheus_reverse_proxy_dir }}/conf.d/{{ role_name }}.https.location"
+      owner: root
+      mode: 0600
+    notify: reverse_proxy_nginx_restart
+    become: true
+
+  - name: Install passlib
+    apt:
+      name: python-passlib
+      state: present
+    become: true
+  
+  - name: Create basic auth user
+    htpasswd:
+      path: "{{ prometheus_reverse_proxy_dir }}/conf.d/{{ role_name }}.htpasswd"
+      name: "{{ vault_prometheus_proxy_user }}"
+      password: "{{ vault_prometheus_proxy_password }}"
+      owner: root
+      group: www-data
+      mode: 0644
+    become: true
+    notify: reverse_proxy_nginx_restart
+
+#  - name: Copy root ca
+#    block:
+#      - copy: 
+#          src: "/usr/local/share/ca-certificates/custom_root.crt"
+#          dest: "{{ prometheus_data_dir }}/certs/ca.crt"
+#          remote_src: true
+#    rescue:
+#      - copy:
+#         src: "/usr/local/share/ca-certificates/ipa-ca.crt"
+#         dest: "{{ prometheus_data_dir }}/certs/ca.crt"
+#         remote_src: true
+
+- name: Delete old container
+  shell: docker rm -f $(docker ps -a -q --filter "label={{ prometheus_container_label }}")
+  register: docker_removed
+  when: prometheus_docker_remove_container|bool
+  failed_when:
+    - docker_removed.rc != 0
+    - '"requires at least 1 argument" not in docker_removed.stderr'
+  become : true
+
+- name: Create Prometheus docker container
+  command: docker create \
+            --name {{ prometheus_container_name }} \
+            --label {{ prometheus_container_label }} \
+            -v {{ prometheus_data_dir }}:/prometheus \
+            --restart unless-stopped \
+            --net host \
+            prom/prometheus \
+            --config.file=/prometheus/prometheus.yml \
+            --web.listen-address={{ prometheus_listen_address }}
+            --web.external-url={{ prometheus_external_url }} 
+  register: docker_create
+  failed_when:
+    - docker_create.rc != 0
+    - '"is already in use by container" not in docker_create.stderr'
+  changed_when:
+    - docker_create.rc == 0
+  notify: "prometheus_container_restart"
+  become: true
+#            --web.route-prefix={{ prometheus_route_prefix }} \
 
 - name: Generate prometheus config
   template:
@@ -25,34 +112,20 @@
     force: yes
     backup: yes
   register: prometheus_config
+  notify: "prometheus_container_restart"
+  become: true
 
-- name: Create docker network
-  shell: "docker network create {{ prometheus_container_network }} || true"
+- name: Copy default alerts
+  copy:
+    src: default.rules
+    dest: "{{ prometheus_data_dir }}/rules/default.rules"
+    mode: 0644
+    force: yes
+    backup: yes
+  register: prometheus_rules
+  notify: "prometheus_container_restart"
+  become: true
 
-- name: Check if prometheus docker container is running
-  shell: docker ps | grep {{ prometheus_container_name }}
-  register: container_running
-  changed_when: false
-  ignore_errors: yes
-
-- name: Check if prometheus docker container exist
-  command: docker inspect {{ prometheus_container_name }}
-  register: container_exist
-  changed_when: false
-  ignore_errors: yes
-
-- name: Get Prometheus docker image
-  shell: docker pull prom/prometheus
-  when: not container_exist.rc == 0
-
-- name: Run Prometheus docker container
-  shell: docker run --name {{ prometheus_container_name }} --net {{ prometheus_container_network }} -v {{ prometheus_data_dir }}:/prometheus --restart unless-stopped --detach prom/prometheus --config.file=/prometheus/prometheus.yml --web.external-url=http://{{ inventory_hostname }} --web.route-prefix="/"
-  when: not container_exist.rc == 0
-
-- name: Start existing Prometheus docker container
-  shell: docker start {{ prometheus_container_name }}
-  when: container_exist.rc == 0 and not container_running.rc == 0
-  
-- name: Restart Prometheus container if config changed
-  shell: docker restart {{ prometheus_container_name }}
-  when: prometheus_config.changed
+- debug: msg="Trigger Nginx container restart"
+  notify: reverse_proxy_nginx_restart
+  changed_when: true
