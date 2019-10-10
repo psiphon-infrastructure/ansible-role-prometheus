@@ -10,6 +10,7 @@ prometheus_docker_remove_container: false
 prometheus_external_url: "https://localhost/prometheus/"
 prometheus_route_prefix: "/"
 prometheus_listen_address: "127.0.0.1:9090"
+prometheus_target_servers: "all"
 
 # Other vars
 prometheus_reverse_proxy_container_label: "{{ reverse_proxy_nginx_label | default('reverse_proxy') }}"

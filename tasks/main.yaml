@@ -62,17 +62,17 @@
     become: true
     notify: reverse_proxy_nginx_restart
 
-  - name: Copy root ca
-    block:
-      - copy: 
-          src: "/usr/local/share/ca-certificates/custom_root.crt"
-          dest: "{{ prometheus_data_dir }}/certs/ca.crt"
-          remote_src: true
-    rescue:
-      - copy:
-         src: "/usr/local/share/ca-certificates/ipa-ca.crt"
-         dest: "{{ prometheus_data_dir }}/certs/ca.crt"
-         remote_src: true
+#  - name: Copy root ca
+#    block:
+#      - copy: 
+#          src: "/usr/local/share/ca-certificates/custom_root.crt"
+#          dest: "{{ prometheus_data_dir }}/certs/ca.crt"
+#          remote_src: true
+#    rescue:
+#      - copy:
+#         src: "/usr/local/share/ca-certificates/ipa-ca.crt"
+#         dest: "{{ prometheus_data_dir }}/certs/ca.crt"
+#         remote_src: true
 
 - name: Delete old container
   shell: docker rm -f $(docker ps -a -q --filter "label={{ prometheus_container_label }}")
@@ -125,3 +125,7 @@
   register: prometheus_rules
   notify: "prometheus_container_restart"
   become: true
+
+- debug: msg="Trigger Nginx container restart"
+  notify: reverse_proxy_nginx_restart
+  changed_when: true
