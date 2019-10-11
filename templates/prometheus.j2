@@ -9,8 +9,8 @@ alerting:
     path_prefix: /alertmanager
     static_configs:
     - targets:
-      {% for host in groups['prometheus_alertmanagers'] %}
-      - {{ host }}:443
+      {% for host in groups[prometheus_alertmanager_servers] %}
+      - {{ host }}:{{ prometheus_alertmanager_port }}
       {% endfor %}
 
     tls_config:
@@ -32,7 +32,7 @@ scrape_configs:
     # scheme defaults to 'http'.
     metrics_path: '/node_exporter/metrics'
     static_configs:
-    - targets: [{% for host in groups[prometheus_target_servers] %} '{{ host }}:443', {% endfor %}]
+    - targets: [{% for host in groups[prometheus_target_servers] %} '{{ host }}:{{ prometheus_exporter_port }}', {% endfor %}]
     scheme: https
     tls_config:
       #ca_file: /prometheus/ca.crt
