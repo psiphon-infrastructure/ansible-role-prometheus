@@ -1,5 +1,3 @@
----
-# file: ansible-role-prometheus/tasks/uninstall.yaml
 
 - name: Stop existing Prometheus docker container
   shell: docker stop {{ prometheus_container_name }}
